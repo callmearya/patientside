@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Room</title>
+    <title>Create a Room</title>
     <style>
         #localVideo {
             width: 100%;
@@ -11,32 +11,22 @@
         }
         #createRoomBtn {
             padding: 10px 20px;
-            background-color: #28a745;
+            background-color: #007bff;
             color: white;
             border: none;
             cursor: pointer;
             font-size: 16px;
-        }
-        #createRoomBtn:disabled {
-            background-color: grey;
-            cursor: not-allowed;
-        }
-        #errorMsg {
-            color: red;
         }
     </style>
 </head>
 <body>
     <h1>Create a Room</h1>
 
-    <!-- Button to Create Room -->
+    <!-- Video Stream Display -->
+    <video id="localVideo" autoplay playsinline muted></video>
+
+    <!-- Create Room Button -->
     <button id="createRoomBtn">Create Room</button>
-
-    <!-- Video Stream Display (Muted to avoid hearing local audio) -->
-    <video id="localVideo" autoplay playsinline muted style="display: none;"></video>
-
-    <!-- Error Message -->
-    <p id="errorMsg"></p>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
@@ -46,45 +36,98 @@
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyD1b7InCyJf03f82MBrFCXNd_1lir3nWrQ",
-            authDomain: "lil-testing.firebaseapp.com",
-            databaseURL: "https://lil-testing-default-rtdb.firebaseio.com",
-            projectId: "lil-testing",
-            storageBucket: "lil-testing.appspot.com",
-            messagingSenderId: "309006701748",
-            appId: "1:309006701748:web:2cfa73093e14fbcc2af3e1"
+  authDomain: "lil-testing.firebaseapp.com",
+  databaseURL: "https://lil-testing-default-rtdb.firebaseio.com",
+  projectId: "lil-testing",
+  storageBucket: "lil-testing.appspot.com",
+  messagingSenderId: "309006701748",
+  appId: "1:309006701748:web:2cfa73093e14fbcc2af3e1"
         };
         firebase.initializeApp(firebaseConfig);
     </script>
 
     <script>
-        const createRoomBtn = document.getElementById('createRoomBtn');
         const localVideo = document.getElementById('localVideo');
-        const errorMsg = document.getElementById('errorMsg');
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        let localStream;
+        let peerConnection;
+        let currentRoomID = null;
 
-        createRoomBtn.onclick = function() {
-            // Disable button after room is created
-            createRoomBtn.disabled = true;
-            createRoomBtn.innerText = "Room Created";
+        const servers = {
+            iceServers: [
+                {
+                    urls: 'stun:stun.l.google.com:19302'
+                }
+            ]
+        };
 
-            // Generate a unique room ID
-            const roomID = Math.random().toString(36).substring(2, 10); 
+        // Start local video stream
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localVideo.srcObject = stream;
+                localStream = stream;
+                localVideo.muted = true;  // Mute local video playback
+            })
+            .catch(error => {
+                console.error('Error accessing media devices:', error);
+            });
 
-            // Store the room in Firebase
-            firebase.database().ref('rooms/' + roomID).set({
+        // Create room on button click
+        createRoomBtn.onclick = async function() {
+            createRoomBtn.disabled = true;  // Disable button after room creation
+            currentRoomID = generateRoomID();  // Generate a random room ID
+
+            // Store room in Firebase as available
+            firebase.database().ref('rooms/' + currentRoomID).set({
                 status: "available"
             });
 
-            // Ask for video and audio permissions
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                .then(stream => {
-                    localVideo.style.display = 'block'; // Show the video element
-                    localVideo.srcObject = stream; // Display the local video
-                })
-                .catch(error => {
-                    errorMsg.innerText = `Error accessing media devices: ${error.message}`;
-                    console.error('Error accessing media devices:', error);
-                });
+            // Initialize WebRTC peer connection
+            peerConnection = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            // Listen for ICE candidates
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    firebase.database().ref('rooms/' + currentRoomID + '/iceCandidates').push(JSON.stringify(event.candidate));
+                }
+            };
+
+            // Handle track events for remote streams (not needed here since this is Code 1)
+            peerConnection.ontrack = event => {
+                // Handle receiving the remote video stream (Code 2 will display its stream)
+            };
+
+            // Create WebRTC offer (SDP)
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Store the SDP offer in Firebase
+            firebase.database().ref('rooms/' + currentRoomID + '/sdp').set(JSON.stringify(peerConnection.localDescription));
+
+            // Listen for remote SDP (answer) from Code 2
+            firebase.database().ref('rooms/' + currentRoomID + '/sdp').on('value', async snapshot => {
+                const sdpData = snapshot.val();
+                if (sdpData && peerConnection.signalingState !== 'stable') {
+                    const answerDescription = new RTCSessionDescription(JSON.parse(sdpData));
+                    await peerConnection.setRemoteDescription(answerDescription);
+                }
+            });
+
+            // Listen for ICE candidates from Code 2
+            firebase.database().ref('rooms/' + currentRoomID + '/iceCandidates').on('child_added', snapshot => {
+                const candidateData = snapshot.val();
+                if (candidateData) {
+                    const candidate = new RTCIceCandidate(JSON.parse(candidateData));
+                    peerConnection.addIceCandidate(candidate);
+                }
+            });
         };
+
+        // Generate a random room ID (for simplicity)
+        function generateRoomID() {
+            return Math.random().toString(36).substring(2, 8);
+        }
     </script>
 </body>
 </html>
