@@ -21,6 +21,9 @@
             background-color: grey;
             cursor: not-allowed;
         }
+        #errorMsg {
+            color: red;
+        }
     </style>
 </head>
 <body>
@@ -32,9 +35,12 @@
     <!-- Video Stream Display -->
     <video id="localVideo" autoplay playsinline style="display: none;"></video>
 
+    <!-- Error Message -->
+    <p id="errorMsg"></p>
+
     <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <!-- Firebase Configuration -->
     <script>
@@ -53,6 +59,7 @@
     <script>
         const createRoomBtn = document.getElementById('createRoomBtn');
         const localVideo = document.getElementById('localVideo');
+        const errorMsg = document.getElementById('errorMsg');
 
         createRoomBtn.onclick = function() {
             // Disable button after room is created
@@ -67,13 +74,16 @@
                 status: "available"
             });
 
-            // Display user's video stream
-            localVideo.style.display = 'block'; // Show the video element
+            // Ask for video and audio permissions
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
                 .then(stream => {
-                    localVideo.srcObject = stream;
+                    localVideo.style.display = 'block'; // Show the video element
+                    localVideo.srcObject = stream; // Display the local video
                 })
-                .catch(error => console.error('Error accessing media devices.', error));
+                .catch(error => {
+                    errorMsg.innerText = `Error accessing media devices: ${error.message}`;
+                    console.error('Error accessing media devices:', error);
+                });
         };
     </script>
 </body>
